@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Idle Game - Warriors</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>⚔️ Warriors Idle Game</h1>
+        
+        <div class="game-layout">
+            <!-- Left Panel - Resources and Actions -->
+            <div class="panel left-panel">
+                <div class="section">
+                    <h2>Resources</h2>
+                    <div class="resource">
+                        <span>💰 Gold:</span>
+                        <span id="gold">0</span>
+                    </div>
+                    <div class="resource">
+                        <span>⚔️ Warriors:</span>
+                        <span id="warriors">0</span>
+                    </div>
+                    <div class="resource">
+                        <span>📈 Gold/sec:</span>
+                        <span id="gold-per-sec">0</span>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>Actions</h2>
+                    <button id="buy-warrior" class="action-btn">
+                        Buy Warrior
+                        <span id="warrior-cost">10</span> 💰
+                    </button>
+                    <button id="upgrade-gold" class="action-btn">
+                        Upgrade Gold Income
+                        <span id="gold-upgrade-cost">100</span> 💰
+                    </button>
+                    <button id="upgrade-strength" class="action-btn">
+                        Upgrade Warrior Strength
+                        <span id="strength-upgrade-cost">200</span> 💰
+                    </button>
+                </div>
+
+                <div class="section">
+                    <h2>Battle</h2>
+                    <div class="resource">
+                        <span>🌊 Wave:</span>
+                        <span id="wave">1</span>
+                    </div>
+                    <div class="resource">
+                        <span>💪 Warrior Strength:</span>
+                        <span id="strength">1.0</span>
+                    </div>
+                    <button id="start-battle" class="action-btn battle-btn">
+                        Start Battle
+                    </button>
+                    <div id="battle-status" class="battle-status"></div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Canvas Game View -->
+            <div class="panel right-panel">
+                <canvas id="gameCanvas" width="600" height="500"></canvas>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>An idle game inspired by We Are Warriors! • Auto-saves progress</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
