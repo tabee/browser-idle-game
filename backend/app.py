@@ -9,6 +9,12 @@ app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+# Game balance constants
+INITIAL_ENEMY_HEALTH = 100
+ENEMY_HEALTH_MULTIPLIER = 1.2
+INITIAL_ENEMY_STRENGTH = 5
+ENEMY_STRENGTH_MULTIPLIER = 1.15
+
 # Game state
 game_state = {
     'resources': {
@@ -74,9 +80,9 @@ def game_loop():
                 game_state['battle']['wave'] += 1
                 
                 # Scale enemy difficulty
-                game_state['battle']['enemy_max_health'] = int(100 * math.pow(1.2, wave))
+                game_state['battle']['enemy_max_health'] = int(INITIAL_ENEMY_HEALTH * math.pow(ENEMY_HEALTH_MULTIPLIER, wave))
                 game_state['battle']['enemy_health'] = game_state['battle']['enemy_max_health']
-                game_state['battle']['enemy_strength'] = int(5 * math.pow(1.15, wave))
+                game_state['battle']['enemy_strength'] = int(INITIAL_ENEMY_STRENGTH * math.pow(ENEMY_STRENGTH_MULTIPLIER, wave))
                 game_state['battle']['in_combat'] = False
             
             # Check if all warriors dead
@@ -162,4 +168,4 @@ if __name__ == '__main__':
     game_thread.start()
     
     # Run Flask-SocketIO server
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False)

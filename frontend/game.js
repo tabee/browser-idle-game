@@ -2,6 +2,11 @@
 let gameState = null;
 let socket = null;
 
+// Backend URL configuration
+const BACKEND_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:5000' 
+    : `http://${window.location.hostname}:5000`;
+
 // Canvas setup
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -13,11 +18,7 @@ let particles = [];
 
 // Connect to backend
 function connectToBackend() {
-    const backendUrl = window.location.hostname === 'localhost' 
-        ? 'http://localhost:5000' 
-        : `http://${window.location.hostname}:5000`;
-    
-    socket = io(backendUrl);
+    socket = io(BACKEND_URL);
     
     socket.on('connect', () => {
         console.log('Connected to game server');
@@ -36,11 +37,7 @@ function connectToBackend() {
 // Fetch initial game state
 async function fetchGameState() {
     try {
-        const backendUrl = window.location.hostname === 'localhost' 
-            ? 'http://localhost:5000' 
-            : `http://${window.location.hostname}:5000`;
-        
-        const response = await fetch(`${backendUrl}/api/state`);
+        const response = await fetch(`${BACKEND_URL}/api/state`);
         const state = await response.json();
         updateGameState(state);
     } catch (error) {
@@ -269,11 +266,7 @@ function render() {
 // API calls
 async function makeAPICall(endpoint) {
     try {
-        const backendUrl = window.location.hostname === 'localhost' 
-            ? 'http://localhost:5000' 
-            : `http://${window.location.hostname}:5000`;
-        
-        const response = await fetch(`${backendUrl}/api/${endpoint}`, {
+        const response = await fetch(`${BACKEND_URL}/api/${endpoint}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
