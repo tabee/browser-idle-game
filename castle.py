@@ -17,7 +17,8 @@ class Castle(pygame.Rect):
         self.name = name
         self.level = level
         self.food = food
-        self.food_gain_amount = food_gain_amount
+        self._base_food_gain_amount = food_gain_amount
+        self.food_gain_amount = food_gain_amount * level
         self.food_gain_interval = food_gain_interval
         self.max_health = max_health
         self.health = float(max_health)
@@ -36,6 +37,7 @@ class Castle(pygame.Rect):
 
     def upgrade(self):
         self.level += 1
+        self.food_gain_amount = self._base_food_gain_amount * self.level
         print(f"{self.name} upgraded to level {self.level}!")
 
     def take_damage(self, amount):

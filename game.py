@@ -264,6 +264,14 @@ while running:
         screen.blit(name_surface, name_rect)
         screen.blit(food_surface, food_rect)
         screen.blit(health_surface, health_rect)
+        level_surface = small_font.render(f"Level: {castle.level}", True, (210, 180, 120))
+        gain_surface = small_font.render(
+            f"Food Gain: {getattr(castle, 'food_gain_amount', 0):.0f}", True, (210, 180, 120)
+        )
+        level_rect = level_surface.get_rect(midtop=(castle.centerx, health_rect.bottom + 4))
+        gain_rect = gain_surface.get_rect(midtop=(castle.centerx, level_rect.bottom + 4))
+        screen.blit(level_surface, level_rect)
+        screen.blit(gain_surface, gain_rect)
         stats: VillanStats = getattr(castle, "villan_stats", PLAYER_VILLAN_STATS)
         stat_color = (180, 190, 210)
         stat_texts = (
@@ -271,7 +279,7 @@ while running:
             small_font.render(f"HP: {stats.max_health}", True, stat_color),
             small_font.render(f"Damage: {stats.damage}", True, stat_color),
         )
-        stat_y = health_rect.bottom + 4
+        stat_y = gain_rect.bottom + 6
         for stat_surface in stat_texts:
             stat_rect = stat_surface.get_rect(midtop=(castle.centerx, stat_y))
             screen.blit(stat_surface, stat_rect)
