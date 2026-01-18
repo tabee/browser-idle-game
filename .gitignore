@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Node modules (if any JavaScript dependencies are added)
+node_modules/
+
+# Docker
+*.log
