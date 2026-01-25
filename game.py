@@ -1,326 +1,217 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-import random
-from pathlib import Path
 import pygame
-from castle import Castle
-from villan import Villan
-from sprite_loader import SpriteAtlas
+import json
+import os
+from dataclasses import dataclass
+from typing import List
+import random
 
-pygame.init()
 
-font = pygame.font.SysFont("arial", 24)
-small_font = pygame.font.SysFont("arial", 20)
-overlay_font = pygame.font.SysFont("arial", 48)
+class SpriteManager:
+    """Verwaltet Grass-Tile Sprites"""
+
+    def __init__(self, graphics_folder: str):
+        self.graphics_folder = graphics_folder
+        self.tiles: List[pygame.Surface] = []
+        self._load_tiles()
+
+    def _load_tiles(self):
+        """Lädt alle Grass-Tiles aus dem graphics Ordner"""
+        tile_files = ["grass-tile.png", "grass-tile-2.png", "grass-tile-3.png"]
+        
+        for tile_file in tile_files:
+            path = os.path.join(self.graphics_folder, tile_file)
+            if os.path.exists(path):
+                tile = pygame.image.load(path)
+                # Skaliere auf 48x48
+                tile = pygame.transform.scale(tile, (48, 48))
+                self.tiles.append(tile)
+            else:
+                print(f"Warning: {path} not found")
+
+    def get_random_tile(self) -> pygame.Surface:
+        """Gibt ein zufälliges Tile zurück"""
+        return random.choice(self.tiles) if self.tiles else None
+
 
 @dataclass
-class VillanStats:
-    speed: float
-    max_health: int
-    damage: int
+class Tile:
+    """Ein einzelner Tile in der Welt"""
+    x: int
+    y: int
+    tile_index: int
+
+    def to_dict(self) -> dict:
+        return {"x": self.x, "y": self.y, "tile_index": self.tile_index}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Tile":
+        return cls(data["x"], data["y"], data["tile_index"])
 
 
-PLAYER_VILLAN_STATS = VillanStats(speed=140.0, max_health=60, damage=12)
-ENEMY_VILLAN_STATS = VillanStats(speed=140.0, max_health=60, damage=12)
+class World:
+    """Repräsentiert die gesamte Welt"""
 
-sprites_dir = Path(__file__).with_name("sprites")
-spritesheet_image_path = sprites_dir / "spritesheet_retina.png"
-spritesheet_meta_path = sprites_dir / "spritesheet_retina.xml"
+    def __init__(self, width: int, height: int):
+        self.width = width
+        self.height = height
+        self.tiles: List[Tile] = []
 
-VILLAN_COST = 40
-BUTTON_WIDTH, BUTTON_HEIGHT = 200, 60
-UPGRADE_BUTTON_MARGIN = 20
-ENEMY_DECISION_INTERVAL = 3.0
+    def to_dict(self) -> dict:
+        return {
+            "width": self.width,
+            "height": self.height,
+            "tiles": [tile.to_dict() for tile in self.tiles]
+        }
 
-UPGRADE_OPTIONS = [
-    {"label": "Tower Lv +1", "cost": 100, "key": "tower"},
-    {"label": "Speed +5", "cost": 60, "key": "speed"},
-    {"label": "Damage +2", "cost": 50, "key": "damage"},
-]
+    @classmethod
+    def from_dict(cls, data: dict) -> "World":
+        world = cls(data["width"], data["height"])
+        world.tiles = [Tile.from_dict(tile_data) for tile_data in data["tiles"]]
+        return world
 
-castle_left = Castle("LeftCastle", 1, position=(50, 50))
-castle_right = Castle("RightCastle", 1, position=(1350, 50))
-castle_left.villan_stats = PLAYER_VILLAN_STATS
-castle_right.villan_stats = ENEMY_VILLAN_STATS
-castles = [castle_left, castle_right]
+    def save(self, filepath: str):
+        """Speichert die Welt als JSON"""
+        with open(filepath, 'w') as f:
+            json.dump(self.to_dict(), f, indent=2)
 
-
-def create_villan_for_castle(
-    castle: Castle,
-    direction: int,
-    owner: str,
-    sprite: pygame.Surface,
-    weapon_sprite: pygame.Surface,
-) -> Villan:
-    spawn_x = castle.right if direction > 0 else castle.left - sprite.get_width()
-    spawn_y = castle.bottom
-    rotation_direction = -1.0 if owner == "enemy" else 1.0
-    stats: VillanStats = getattr(castle, "villan_stats", PLAYER_VILLAN_STATS)
-    return Villan(
-        owner,
-        (spawn_x, spawn_y),
-        direction,
-        sprite,
-        weapon_sprite,
-        weapon_rotation_direction=rotation_direction,
-        speed=stats.speed,
-        max_health=stats.max_health,
-        damage=stats.damage,
-    )
+    @classmethod
+    def load(cls, filepath: str) -> "World":
+        """Lädt eine Welt aus JSON"""
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+        return cls.from_dict(data)
 
 
-def apply_upgrade(castle: Castle, key: str, active_units: list[Villan]) -> None:
-    if not hasattr(castle, "villan_stats"):
-        castle.villan_stats = VillanStats(speed=140.0, max_health=60, damage=12)
-    if key == "tower":
-        castle.upgrade()
-    elif key == "speed":
-        castle.villan_stats.speed += 5
-        for unit in active_units:
-            unit.speed += 5
-    elif key == "damage":
-        castle.villan_stats.damage += 2
-        for unit in active_units:
-            unit.damage += 2
+class WorldGenerator:
+    """Generiert zufällige Welten"""
+
+    def __init__(self, tile_count: int = 3):
+        self.tile_count = tile_count
+
+    def generate(self, width: int, height: int) -> World:
+        """Generiert eine neue zufällige Welt mit 75% Wahrscheinlichkeit für gleiche Nachbar-Tiles"""
+        world = World(width, height)
+        
+        # Erstelle ein Grid für schnellen Zugriff
+        grid = {}
+        
+        for y in range(height):
+            for x in range(width):
+                # Sammle alle bereits gesetzten Nachbarn (8 Richtungen)
+                neighbors = []
+                for dx, dy in [(-1, -1), (0, -1), (1, -1), (-1, 0)]:
+                    nx, ny = x + dx, y + dy
+                    if (nx, ny) in grid:
+                        neighbors.append(grid[(nx, ny)])
+                
+                # 75% Wahrscheinlichkeit für gleichen Typ wie ein zufälliger Nachbar
+                if neighbors and random.random() < 0.75:
+                    tile_index = random.choice(neighbors)
+                else:
+                    tile_index = random.randint(0, self.tile_count - 1)
+                
+                # Speichere im Grid und World
+                grid[(x, y)] = tile_index
+                world.tiles.append(Tile(x, y, tile_index))
+
+        return world
 
 
-def enemy_take_action(castle: Castle, enemy_units: list[Villan]) -> bool:
-    choices: list[dict[str, object]] = [{"type": "save", "cost": 0}]
-    if castle.food >= VILLAN_COST:
-        choices.append({"type": "spawn", "cost": VILLAN_COST})
-    for option in UPGRADE_OPTIONS:
-        if castle.food >= option["cost"]:
-            choices.append({"type": "upgrade", "key": option["key"], "cost": option["cost"]})
+class Button:
+    """Ein einfacher UI Button"""
 
-    if not choices:
-        return False
+    def __init__(self, x: int, y: int, width: int, height: int, text: str):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.hovered = False
 
-    action = random.choice(choices)
-    action_type = action["type"]
-    cost = action["cost"]
+    def draw(self, surface: pygame.Surface, font: pygame.font.Font):
+        """Zeichnet den Button"""
+        color = (100, 150, 100) if self.hovered else (80, 120, 80)
+        pygame.draw.rect(surface, color, self.rect)
+        pygame.draw.rect(surface, (255, 255, 255), self.rect, 2)
 
-    if action_type == "save":
-        return True
+        text_surface = font.render(self.text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=self.rect.center)
+        surface.blit(text_surface, text_rect)
 
-    if action_type == "spawn":
-        castle.food -= cost
-        enemy_units.append(
-            create_villan_for_castle(
-                castle,
-                -1,
-                "enemy",
-                ENEMY_VILLAN_SPRITE,
-                DEFAULT_WEAPON_SPRITE,
-            )
+    def is_clicked(self, pos: tuple) -> bool:
+        """Prüft ob Button geklickt wurde"""
+        return self.rect.collidepoint(pos)
+
+    def update_hover(self, pos: tuple):
+        """Updated Hover-Status"""
+        self.hovered = self.rect.collidepoint(pos)
+
+
+class Game:
+    TILE_SIZE = 48
+    WINDOW_WIDTH = 1600
+    WINDOW_HEIGHT = 1200
+
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((self.WINDOW_WIDTH, self.WINDOW_HEIGHT))
+        pygame.display.set_caption("World Generator")
+        self.clock = pygame.time.Clock()
+        self.running = True
+        self.font = pygame.font.Font(None, 24)
+
+        # Berechne Welt-Größe basierend auf Tile-Größe
+        self.world_width = self.WINDOW_WIDTH // self.TILE_SIZE
+        self.world_height = self.WINDOW_HEIGHT // self.TILE_SIZE
+
+        # Initialize managers
+        self.sprite_manager = SpriteManager("graphics")
+        self.world_generator = WorldGenerator(tile_count=3)
+        self.world = self.world_generator.generate(self.world_width, self.world_height)
+
+        # UI
+        self.generate_button = Button(
+            self.WINDOW_WIDTH - 220, 20, 200, 50, "Generate World"
         )
-        return True
 
-    if action_type == "upgrade":
-        castle.food -= cost
-        apply_upgrade(castle, action["key"], enemy_units)
-        return True
-    return False
-
-W, H = 1600, 900
-screen = pygame.display.set_mode((W, H))
-pygame.display.set_caption("Rect läuft links/rechts (pygame-ce)")
-
-sprite_atlas = SpriteAtlas(spritesheet_image_path, spritesheet_meta_path)
-PLAYER_VILLAN_SPRITE = sprite_atlas.sprite("character_squarePurple.png")
-ENEMY_VILLAN_SPRITE = sprite_atlas.sprite("character_squareRed.png")
-DEFAULT_WEAPON_SPRITE = sprite_atlas.sprite("item_sword.png")
-
-buy_button_rect = pygame.Rect(30, H - BUTTON_HEIGHT - 30, BUTTON_WIDTH, BUTTON_HEIGHT)
-upgrade_button_rects = []
-for idx, _ in enumerate(UPGRADE_OPTIONS):
-    x_pos = buy_button_rect.right + UPGRADE_BUTTON_MARGIN + idx * (BUTTON_WIDTH + UPGRADE_BUTTON_MARGIN)
-    upgrade_button_rects.append(
-        pygame.Rect(x_pos, H - BUTTON_HEIGHT - 30, BUTTON_WIDTH, BUTTON_HEIGHT)
-    )
-
-clock = pygame.time.Clock()
-
-player_villans: list[Villan] = []
-enemy_villans: list[Villan] = []
-enemy_decision_timer = ENEMY_DECISION_INTERVAL
-game_over_text: str | None = None
-
-
-
-running = True
-while running:
-    dt = clock.tick(60) / 1000.0  # Sekunden seit letztem Frame
-
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if buy_button_rect.collidepoint(event.pos) and castle_left.food >= VILLAN_COST:
-                castle_left.food -= VILLAN_COST
-                player_villans.append(
-                    create_villan_for_castle(
-                        castle_left,
-                        1,
-                        "player",
-                        PLAYER_VILLAN_SPRITE,
-                        DEFAULT_WEAPON_SPRITE,
+    def handle_events(self):
+        """Verarbeitet Events"""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if self.generate_button.is_clicked(event.pos):
+                    self.world = self.world_generator.generate(
+                        self.world_width, self.world_height
                     )
+                    self.world.save("world.json")
+            elif event.type == pygame.MOUSEMOTION:
+                self.generate_button.update_hover(event.pos)
+
+    def draw(self):
+        """Zeichnet das Spiel"""
+        self.screen.fill((0, 0, 0))
+
+        # Zeichne Welt-Tiles
+        for tile in self.world.tiles:
+            if 0 <= tile.tile_index < len(self.sprite_manager.tiles):
+                sprite = self.sprite_manager.tiles[tile.tile_index]
+                self.screen.blit(
+                    sprite, (tile.x * self.TILE_SIZE, tile.y * self.TILE_SIZE)
                 )
-            else:
-                for idx, rect in enumerate(upgrade_button_rects):
-                    if not rect.collidepoint(event.pos):
-                        continue
-                    option = UPGRADE_OPTIONS[idx]
-                    if castle_left.food < option["cost"]:
-                        break
-                    castle_left.food -= option["cost"]
-                    apply_upgrade(castle_left, option["key"], player_villans)
-                    break
 
-    for castle in castles:
-        castle.gain_food(dt)
+        # Zeichne UI
+        self.generate_button.draw(self.screen, self.font)
 
-    if castle_right.food > VILLAN_COST:
-        enemy_decision_timer -= dt
-        if enemy_decision_timer <= 0.0:
-            acted = enemy_take_action(castle_right, enemy_villans)
-            enemy_decision_timer = ENEMY_DECISION_INTERVAL if acted else 1.0
-    else:
-        enemy_decision_timer = 0.0
+        pygame.display.flip()
 
-    for villan in (*player_villans, *enemy_villans):
-        villan.tick_attack_timer(dt)
+    def run(self):
+        """Main Game Loop"""
+        while self.running:
+            self.handle_events()
+            self.draw()
+            self.clock.tick(60)
 
-    engaged: set[Villan] = set()
+        pygame.quit()
 
-    for pv in player_villans:
-        if not pv.is_alive:
-            continue
-        for ev in enemy_villans:
-            if not ev.is_alive:
-                continue
-            if pv.rect.colliderect(ev.rect):
-                engaged.add(pv)
-                engaged.add(ev)
-                if pv.ready_to_attack():
-                    ev.take_damage(pv.damage)
-                    pv.register_attack()
-                if ev.ready_to_attack():
-                    pv.take_damage(ev.damage)
-                    ev.register_attack()
 
-    for pv in player_villans:
-        if not pv.is_alive:
-            continue
-        if pv.rect.colliderect(castle_right):
-            engaged.add(pv)
-            if pv.ready_to_attack():
-                castle_right.take_damage(pv.damage)
-                pv.register_attack()
-
-    for ev in enemy_villans:
-        if not ev.is_alive:
-            continue
-        if ev.rect.colliderect(castle_left):
-            engaged.add(ev)
-            if ev.ready_to_attack():
-                castle_left.take_damage(ev.damage)
-                ev.register_attack()
-
-    for pv in player_villans:
-        if pv.is_alive and pv not in engaged:
-            pv.move_forward(dt)
-
-    for ev in enemy_villans:
-        if ev.is_alive and ev not in engaged:
-            ev.move_forward(dt)
-
-    for villan in (*player_villans, *enemy_villans):
-        villan.update_weapon(dt, villan in engaged)
-
-    player_villans = [pv for pv in player_villans if pv.is_alive]
-    enemy_villans = [ev for ev in enemy_villans if ev.is_alive]
-
-    if game_over_text is None:
-        if castle_left.is_destroyed:
-            game_over_text = "Enemy wins!"
-            running = False
-        elif castle_right.is_destroyed:
-            game_over_text = "Player wins!"
-            running = False
-
-    # Zeichnen
-    screen.fill((20, 20, 25))
-
-    for castle in castles:
-        pygame.draw.rect(screen, (150, 75, 0), castle)
-        name_surface = font.render(castle.name, True, (230, 230, 230))
-        food_surface = small_font.render(f"Food: {castle.food}", True, (200, 200, 80))
-        health_surface = small_font.render(f"HP: {int(castle.health)}", True, (200, 120, 120))
-        name_rect = name_surface.get_rect(midbottom=(castle.centerx, castle.top - 10))
-        food_rect = food_surface.get_rect(midtop=(castle.centerx, castle.bottom + 10))
-        health_rect = health_surface.get_rect(midtop=(castle.centerx, food_rect.bottom + 4))
-        screen.blit(name_surface, name_rect)
-        screen.blit(food_surface, food_rect)
-        screen.blit(health_surface, health_rect)
-        level_surface = small_font.render(f"Level: {castle.level}", True, (210, 180, 120))
-        gain_surface = small_font.render(
-            f"Food Gain: {getattr(castle, 'food_gain_amount', 0):.0f}", True, (210, 180, 120)
-        )
-        level_rect = level_surface.get_rect(midtop=(castle.centerx, health_rect.bottom + 4))
-        gain_rect = gain_surface.get_rect(midtop=(castle.centerx, level_rect.bottom + 4))
-        screen.blit(level_surface, level_rect)
-        screen.blit(gain_surface, gain_rect)
-        stats: VillanStats = getattr(castle, "villan_stats", PLAYER_VILLAN_STATS)
-        stat_color = (180, 190, 210)
-        stat_texts = (
-            small_font.render(f"Speed: {stats.speed:.0f}", True, stat_color),
-            small_font.render(f"HP: {stats.max_health}", True, stat_color),
-            small_font.render(f"Damage: {stats.damage}", True, stat_color),
-        )
-        stat_y = gain_rect.bottom + 6
-        for stat_surface in stat_texts:
-            stat_rect = stat_surface.get_rect(midtop=(castle.centerx, stat_y))
-            screen.blit(stat_surface, stat_rect)
-            stat_y = stat_rect.bottom + 2
-
-    for villan in player_villans:
-        villan.draw(screen)
-
-    for villan in enemy_villans:
-        villan.draw(screen)
-
-    affordable = castle_left.food >= VILLAN_COST
-    button_color = (80, 180, 100) if affordable else (70, 70, 70)
-    text_color = (20, 20, 20) if affordable else (200, 200, 200)
-    pygame.draw.rect(screen, button_color, buy_button_rect, border_radius=10)
-    pygame.draw.rect(screen, (25, 25, 25), buy_button_rect, width=2, border_radius=10)
-    button_text = small_font.render(f"Buy Villan ({VILLAN_COST})", True, text_color)
-    button_text_rect = button_text.get_rect(center=buy_button_rect.center)
-    screen.blit(button_text, button_text_rect)
-
-    for rect, option in zip(upgrade_button_rects, UPGRADE_OPTIONS):
-        affordable_upgrade = castle_left.food >= option["cost"]
-        upgrade_color = (120, 160, 220) if affordable_upgrade else (70, 70, 70)
-        upgrade_text_color = (15, 20, 30) if affordable_upgrade else (200, 200, 200)
-        pygame.draw.rect(screen, upgrade_color, rect, border_radius=10)
-        pygame.draw.rect(screen, (25, 25, 25), rect, width=2, border_radius=10)
-        label_surface = small_font.render(option["label"], True, upgrade_text_color)
-        cost_surface = small_font.render(f"{option['cost']} food", True, upgrade_text_color)
-        label_rect = label_surface.get_rect(midtop=(rect.centerx, rect.top + 8))
-        cost_rect = cost_surface.get_rect(midtop=(rect.centerx, label_rect.bottom + 4))
-        screen.blit(label_surface, label_rect)
-        screen.blit(cost_surface, cost_rect)
-
-    if game_over_text is not None:
-        overlay_surface = overlay_font.render(game_over_text, True, (240, 230, 140))
-        overlay_rect = overlay_surface.get_rect(center=(W // 2, H // 2))
-        screen.blit(overlay_surface, overlay_rect)
-
-    pygame.display.flip()
-
-pygame.quit()
-
-if game_over_text is not None:
-    print(game_over_text)
+if __name__ == "__main__":
+    game = Game()
+    game.run()
